@@ -1,15 +1,7 @@
 <template>
   <div class="login-container">
-    
-    <!-- <div class="login-left">
-      <div class="welcome-box">
-        <img src="/logo.svg" alt="Logo" class="welcome-logo"> <h1 class="welcome-title">欢迎使用翼享名片系统</h1>
-        <p class="welcome-desc">（这是左侧的示意图区域）</p>
-      </div>
-    </div> -->
-
     <div class="login-right">
-      <el-form ref="loginFormRef" :model="loginForm" class="login-form">
+      <el-form ref="loginFormRef" :model="loginForm" :rules="rules" class="login-form">
         <h2 class="login-title">系统登录</h2>
 
         <el-form-item prop="username">
@@ -29,6 +21,7 @@
             show-password
             :prefix-icon="Lock"
             size="large"
+            @keyup.enter="handleLogin" 
           />
         </el-form-item>
 
@@ -41,7 +34,7 @@
               size="large"
               class="verify-code-input"
             />
-            <div class="verify-code-img">m0DG</div>
+            <div class="verify-code-img" @click="refreshCode">m0DG</div>
           </div>
         </el-form-item>
         
@@ -54,6 +47,7 @@
             type="primary" 
             class="login-button" 
             size="large" 
+            :loading="loading"
             @click="handleLogin"
           >
             登 录
@@ -61,142 +55,141 @@
         </el-form-item>
       </el-form>
     </div>
-
   </div>
 </template>
 
 <script setup lang="ts">
-// 1. 逻辑层：从 vue 导入 ref，用于创建“响应式数据”
-import { ref } from 'vue'
-// 2. 导入 Element Plus 的图标
-import { User, Lock, Picture } from '@element-plus/icons-vue'
-// 3. 导入 Element Plus 的 Form 相关类型 (可选, 但更规范)
-import type { ElForm } from 'element-plus'
-
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-// import type { LoginForm } from '../types/api'
-
+import { User, Lock, Picture } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
+// 引入 API
+import { login } from '../types/api'
 
 const router = useRouter()
+const loginFormRef = ref<FormInstance>()
+const loading = ref(false)
 
-// 4. 【对接预留】
-// 我们把表单所有的数据都放在一个 ref 对象里
-// 这样将来发给后端时, 直接发送 loginForm.value 即可
-const loginForm = ref({
+// 表单数据
+const loginForm = reactive({
   username: '',
   password: '',
   verifyCode: '',
   rememberMe: false
 })
 
-// 改进：
+// 表单验证规则
+const rules = reactive<FormRules>({
+  username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+})
 
-// const loginForm = ref();
+// 刷新验证码 (预留)
+const refreshCode = () => {
+  ElMessage.info('后端验证码接口开发中')
+}
 
-// 5. 【对接预留】
-// 这是点击“登录”按钮时会执行的函数
-const handleLogin = () => {
-  console.log('用户尝试登录，表单数据：', loginForm.value)
+// 登录处理
+const handleLogin = async () => {
+  if (!loginFormRef.value) return
   
-  // TODO: 对接后端
-  // 将来我们只需要在这里写 API 请求, 比如:
-  //
-  // try {
-  //   const response = await api.login(loginForm.value);
-  //   if (response.code === 200) {
-  //     // 登录成功, 保存 token, 跳转到首页
-  //   } else {
-  //     // 登录失败, 弹出错误提示
-  //   }
-  // } catch (error) {
-  //   // 网络错误
-  // }
-  router.push('/system')
+  await loginFormRef.value.validate(async (valid) => {
+    if (valid) {
+      loading.value = true
+      try {
+        // 1. 调用登录接口 (注意字段映射：前端 username -> 后端 user_account)
+        const res: any = await login({
+          user_account: loginForm.username,
+          user_password: loginForm.password
+        })
+
+        // 2. 登录成功处理
+        // 假设 res 结构是 { token: '...', user_info: { user_name: '...', ... } }
+        if (res.token) {
+          localStorage.setItem('token', res.token)
+          
+          // 存储用户信息，供 layout 显示名字用
+          if (res.user_info) {
+            localStorage.setItem('userInfo', JSON.stringify(res.user_info))
+          }
+
+          ElMessage.success('登录成功')
+          router.push('/system/info') // 跳转到名片管理页
+        }
+      } catch (error) {
+        // request.ts 会处理错误弹窗
+      } finally {
+        loading.value = false
+      }
+    }
+  })
 }
 </script>
 
 <style scoped>
-/* 3. 样式层：scoped 意味着这里的样式只对这个文件生效 */
-
 .login-container {
   display: flex;
   width: 100vw;
   height: 100vh;
   background-color: #f0f2f5;
+  background-image: url('https://gw.alipayobjects.com/zos/rmsportal/TVYTbAXWheQpRcWDaDMu.svg'); /* 加个简单的背景纹理 */
+  background-repeat: no-repeat;
+  background-position: center 110px;
+  background-size: 100%;
 }
 
-/* 左侧样式 */
-.login-left {
-  width: 50%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: #ffffff; /* 按照截图, 左侧是白色背景 */
-  /* 这里可以加你截图里的那个蓝色插画作为背景图 */
-}
-.welcome-box {
-  text-align: center;
-}
-.welcome-logo {
-  width: 80px;
-  height: 80px;
-  margin-bottom: 20px;
-}
-.welcome-title {
-  font-size: 28px;
-  color: #333;
-}
-.welcome-desc {
-  font-size: 16px;
-  color: #999;
-}
-
-/* 右侧样式 */
 .login-right {
-  width: 50%;
+  width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #f0f2f5; /* 右侧是浅灰背景 */
 }
 
-/* 表单样式 */
 .login-form {
-  width: 350px;
+  width: 380px;
   padding: 40px;
   background-color: #ffffff;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 6px 16px -8px rgba(0,0,0,0.08), 0 9px 28px 0 rgba(0,0,0,0.05), 0 12px 48px 16px rgba(0,0,0,0.03);
 }
 
 .login-title {
   text-align: center;
   font-size: 24px;
   margin-bottom: 30px;
+  color: #333;
+  font-weight: 600;
 }
 
 .login-button {
   width: 100%;
+  font-size: 16px;
+  padding: 20px 0;
 }
 
 .verify-code-row {
   display: flex;
   width: 100%;
+  align-items: center;
 }
 .verify-code-input {
-  flex-grow: 1; /* 输入框占满剩余空间 */
-  margin-right: 10px;
+  flex: 1;
+  margin-right: 12px;
 }
 .verify-code-img {
-  width: 80px;
+  width: 100px;
   height: 40px;
-  background-color: #eee;
+  background-color: #f2f6fc;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 20px;
-  letter-spacing: 2px;
+  font-size: 18px;
+  color: #409eff;
+  font-weight: bold;
   cursor: pointer;
-  border-radius: 4px;
+  user-select: none;
 }
 </style>

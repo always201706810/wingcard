@@ -1,0 +1,108 @@
+{
+  "businesscards": [
+    {
+      "id": 1,
+      "card_name": "张三",
+      "card_wechat": "18900001111",
+      "card_phone": "18900001111",
+      "card_email": "zhangsan@ctdz.com",
+      "department_id": "101",
+      "department_name": "市场部",
+      "card_position": "客户经理",
+      "card_address": "达州市通川区大楼101"
+    },
+    {
+      "id": 2,
+      "card_name": "李四",
+      "card_wechat": "13322223333",
+      "card_phone": "13322223333",
+      "card_email": "lisi@ctdz.com",
+      "department_id": "102",
+      "department_name": "政企部",
+      "card_position": "总监",
+      "card_address": "达州市通川区大楼202"
+    },
+    {
+      "card_name": "刘六",
+      "card_wechat": "15181818815",
+      "card_phone": "15181818815",
+      "card_email": "1",
+      "card_address": "1",
+      "organizations": [
+        {
+          "department_id": "101",
+          "department_name": "市场部",
+          "position": "客户经理"
+        }
+      ],
+      "card_postcode": "1",
+      "department_id": "101",
+      "department_name": "市场部",
+      "card_position": "客户经理",
+      "id": 4
+    }
+  ],
+  "company": {
+    "company_name": "中国电信达州分公司",
+    "company_slogan": "用户至上，用心服务",
+    "company_phone": "0818-2000000",
+    "company_background": "始于1998年...",
+    "company_bussiness": "5G, 云计算, 大数据...",
+    "company_address": "四川省达州市通川区",
+    "images": [
+      {
+        "img_url": "https://placehold.co/200x200",
+        "img_type": "logo"
+      }
+    ],
+    "honors": [],
+    "qualifications": []
+  },
+  "departments": [
+    {
+      "department_id": "1",
+      "department_name": "达州电信",
+      "is_enabled": "true",
+      "is_administrative_division": "false",
+      "children": [
+        {
+          "department_id": "101",
+          "department_name": "市场部",
+          "parent_department_id": "1",
+          "is_enabled": "true",
+          "is_administrative_division": "false"
+        },
+        {
+          "department_id": "102",
+          "department_name": "政企客户部",
+          "parent_department_id": "1",
+          "is_enabled": "true",
+          "is_administrative_division": "false"
+        }
+      ]
+    }
+  ],
+  "dashboardStats": {
+    "total_users": 199,
+    "login_users": 14,
+    "login_count": 52,
+    "share_users": 12,
+    "share_count": 51,
+    "view_count": 95,
+    "product_view_count": 75
+  },
+  "dashboardTrend": {
+    "dates": [
+      "2023-11-01",
+      "2023-11-02",
+      "2023-11-03",
+      "2023-11-04"
+    ],
+    "values": [
+      120,
+      132,
+      101,
+      134
+    ]
+  }
+}

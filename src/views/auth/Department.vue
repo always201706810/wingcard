@@ -6,62 +6,108 @@
         <el-input v-model="searchForm.name" placeholder="请输入部门名称"></el-input>
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" :icon="Search">搜索</el-button>
-        <el-button :icon="Refresh">重置</el-button>
+        <el-button type="primary" :icon="Search" @click="fetchTree">搜索</el-button>
+        <el-button :icon="Refresh" @click="handleReset">重置</el-button>
       </el-form-item>
     </el-form>
 
-    <el-button type="primary" :icon="Plus" @click="openDialog">新增</el-button>
+    <el-button type="primary" :icon="Plus" @click="openDialog">新增一级部门</el-button>
 
     <el-divider></el-divider>
 
-<el-table 
+    <el-table 
       :data="tableData" 
       style="width: 100%" 
-      row-key="id" 
+      row-key="department_id" 
       border 
       default-expand-all
+      v-loading="loading"
     >
-      <el-table-column prop="name" label="部门名称" />
-      <el-table-column prop="enabled" label="是否启用">
+      <el-table-column prop="department_name" label="部门名称" min-width="200" />
+      
+      <el-table-column prop="sort_order" label="排序" width="80" align="center" />
+      
+      <el-table-column label="类型" width="100" align="center">
         <template #default="scope">
-          <el-tag :type="scope.row.enabled ? 'success' : 'danger'">
-            {{ scope.row.enabled ? '启用' : '停用' }}
+          <el-tag v-if="isTrue(scope.row.is_administrative_division)" type="warning" size="small">行政区划</el-tag>
+          <el-tag v-else type="info" size="small">普通部门</el-tag>
+        </template>
+      </el-table-column>
+
+      <el-table-column prop="is_enabled" label="状态" width="100" align="center">
+        <template #default="scope">
+          <el-tag :type="isTrue(scope.row.is_enabled) ? 'success' : 'danger'">
+            {{ isTrue(scope.row.is_enabled) ? '启用' : '停用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="contact" label="联系人" />
-      <el-table-column prop="phone" label="联系电话" />
+
+      <el-table-column prop="unified_social_credit_code" label="社会信用代码" min-width="180" show-overflow-tooltip />
       
-      <el-table-column label="操作" width="280">
+      <el-table-column prop="contact_person" label="联系人" width="120" />
+      <el-table-column prop="contact_phone" label="联系电话" width="130" />
+      
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="scope">
           <el-button link type="primary" :icon="Plus" @click="handleAdd(scope.row)">新增下级</el-button>
-          <el-button link type="primary" :icon="Edit">编辑</el-button>
-          <el-button link type="danger" :icon="Delete">删除</el-button>
+          <el-button link type="primary" :icon="Edit" @click="handleEdit(scope.row)">编辑</el-button>
+          <el-button link type="danger" :icon="Delete" @click="handleDelete(scope.row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
-<el-dialog v-model="dialogVisible" :title="formData.parentId ? '新增下级部门' : '新增一级部门'" width="500px">
-<el-form :model="formData" label-width="100px">
-        <el-form-item label="上级部门" v-if="parentName">
-           <el-input v-model="parentName" disabled />
+
+    <el-dialog 
+      v-model="dialogVisible" 
+      :title="dialogTitle" 
+      width="600px"
+    >
+      <el-form :model="formData" label-width="140px">
+        
+        <el-form-item label="上级部门ID" v-if="formData.parent_department_id">
+           <el-input v-model="formData.parent_department_id" disabled placeholder="根节点无父ID" />
         </el-form-item>
 
         <el-form-item label="部门名称" required>
-          <el-input v-model="formData.name" placeholder="请输入部门名称" />
+          <el-input v-model="formData.department_name" placeholder="例如：市场部" />
+        </el-form-item>
+
+        <el-form-item label="是否行政区划">
+          <el-switch 
+            v-model="switchAdmin" 
+            active-text="是" 
+            inactive-text="否"
+          />
+        </el-form-item>
+
+        <el-form-item label="行政区划编码" v-if="switchAdmin">
+          <el-input v-model="formData.administrative_division_code" placeholder="例如：511700" />
+        </el-form-item>
+
+        <el-form-item label="统一社会信用代码">
+          <el-input v-model="formData.unified_social_credit_code" placeholder="请输入统一社会信用代码" />
+        </el-form-item>
+
+        <el-form-item label="排序">
+          <el-input-number v-model="formData.sort_order" :min="0" controls-position="right" />
+          <span class="tip-text">数字越小越靠前</span>
         </el-form-item>
 
         <el-form-item label="是否启用">
-          <el-switch v-model="formData.enabled" />
+          <el-switch 
+            v-model="switchEnabled" 
+            active-text="启用" 
+            inactive-text="停用"
+          />
         </el-form-item>
 
         <el-form-item label="联系人">
-          <el-input v-model="formData.contact" placeholder="请输入负责人姓名" />
+          <el-input v-model="formData.contact_person" placeholder="请输入负责人姓名" />
         </el-form-item>
 
         <el-form-item label="联系电话">
-          <el-input v-model="formData.phone" placeholder="请输入联系电话" />
+          <el-input v-model="formData.contact_phone" placeholder="请输入联系电话" />
         </el-form-item>
+
       </el-form>
       
       <template #footer>
@@ -75,139 +121,162 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-// 导入图标
+import { ref, onMounted, computed } from 'vue'
 import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getDepartmentTree, addDepartment, updateDepartment, deleteDepartment } from '../../types/api'
 import type { Department } from '../../types/api'
 
-
-// 搜索表单的数据 (我们先预留好)
-const searchForm = ref({
-  name: ''
-})
-
-
-// 父级和子需要树结构
-
-const tableData = ref<Department[]>([
-  { 
-    id: '1', 
-    name: '达州电信公司', 
-    enabled: true, 
-    contact: '', 
-    phone: '',
-    children: [
-      { id: '11', parentId: '1', name: '市场部', enabled: true, contact: '张三', phone: '11111111111' },
-      { id: '12', parentId: '1', name: '办公室 (安全保卫部、法律合规部)', enabled: true, contact: '李四', phone: '11111111111' ,
-        children: [{ id: '13', parentId: '1', name: '市场部', enabled: true, contact: '黄善明', phone: '19960660188'}]},
-      // { id: '13', parentId: '1', name: '市场部', enabled: true, contact: '黄善明', phone: '19960660188' },
-      // { id: '14', parentId: '1', name: '政企客户部', enabled: true, contact: '姚整', phone: '19908189616' },
-      // { id: '15', parentId: '1', name: '销售及渠道拓展中心', enabled: true, contact: '', phone: '' },
-      // { id: '16', parentId: '1', name: '商业客户中心', enabled: true, contact: '', phone: '' },
-    ]
-  }
-])
-
-
-const parentName = ref('') 
-
-// 控制弹窗显示/隐藏
+// 1. 状态定义
+const searchForm = ref({ name: '' })
+const tableData = ref<Department[]>([])
+const loading = ref(false)
 const dialogVisible = ref(false)
 
-// 表单数据 (使用 Department 类型)
+// 2. 表单相关状态
+// 辅助变量：用于绑定 switch 开关 (因为 boolean 比字符串 'true'/'false' 好操作)
+const switchEnabled = ref(true)
+const switchAdmin = ref(false)
+
 const formData = ref<Department>({
-  name: '',
-  enabled: true,
-  contact: '',
-  phone: ''
+  department_name: '',
+  is_enabled: 'true',
+  is_administrative_division: 'false',
+  sort_order: 0,
+  contact_person: '',
+  contact_phone: '',
+  administrative_division_code: '',
+  unified_social_credit_code: ''
 })
 
+// 计算弹窗标题
+const dialogTitle = computed(() => {
+  if (formData.value.parent_department_id && !formData.value.department_id) return '新增下级部门'
+  if (formData.value.department_id) return '编辑部门'
+  return '新增一级部门'
+})
+
+// 3. 辅助函数：兼容处理 boolean 和 string ('true')
+const isTrue = (val: boolean | string | undefined) => {
+  return val === true || val === 'true'
+}
+
+// 4. API 交互
+const fetchTree = async () => {
+  loading.value = true
+  try {
+    const res: any = await getDepartmentTree()
+    // 假设后端返回的数据已经是树形结构
+    tableData.value = res || [] 
+  } catch(e) {
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchTree()
+})
+
+const handleReset = () => {
+  searchForm.value.name = ''
+  fetchTree()
+}
+
+// 5. 操作逻辑
+// 打开新增一级部门
 const openDialog = () => {
-  // 每次打开前，重置表单数据
   formData.value = {
-    name: '',
-    enabled: true,
-    contact: '',
-    phone: ''
+    department_name: '',
+    is_enabled: 'true',
+    is_administrative_division: 'false',
+    sort_order: 0,
+    contact_person: '',
+    contact_phone: '',
+    administrative_division_code: '',
+    unified_social_credit_code: ''
   }
+  switchEnabled.value = true
+  switchAdmin.value = false
   dialogVisible.value = true
 }
 
-// 打开弹窗
-// row 参数：如果是点击"新增下级"，row 就是父节点数据；如果是顶部"新增"，row 就是 undefined
-const handleAdd = (row?: Department) => {
-  // 重置表单
+// 打开新增下级
+const handleAdd = (row: Department) => {
   formData.value = {
-    name: '',
-    enabled: true,
-    contact: '',
-    phone: '',
-    parentId: row?.id // 如果有 row, 就把它的 id 记为 parentId
+    department_name: '',
+    parent_department_id: row.department_id, // 关键：自动带入父ID
+    is_enabled: 'true',
+    is_administrative_division: 'false',
+    sort_order: 0,
+    contact_person: '',
+    contact_phone: '',
+    administrative_division_code: '',
+    unified_social_credit_code: ''
   }
-  
-  // 记录父级名字 (仅展示用)
-  parentName.value = row ? row.name : ''
-  
+  switchEnabled.value = true
+  switchAdmin.value = false
   dialogVisible.value = true
 }
 
-
-// 提交表单
-const handleSubmit = () => {
-  console.log('提交的数据：', formData.value)
-  
-  const newDept: Department = {
-    id: Date.now().toString(), // 模拟生成唯一ID
-    ...formData.value,
-    children: [] // 新部门默认没有子部门
-  }
-// 【前端模拟插入逻辑】
-  // 真实开发中：你只需要把 formData 发给后端，后端存好后，你刷新表格即可。
-  // 这里为了演示效果，我们需要手动把数据塞到正确的位置。
-  
-  if (!formData.value.parentId) {
-    // 1. 如果没有 parentId，说明是根节点，直接 push 到最外层
-    tableData.value.push(newDept)
-  } else {
-    // 2. 如果有 parentId，我们需要去树里找到这个爸爸，把数据塞给他
-    // 这里写一个简单的递归查找函数
-    const parent = findDepartment(tableData.value, formData.value.parentId)
-    if (parent) {
-      if (!parent.children) parent.children = [] // 如果爸爸还没孩子，给个空数组
-      parent.children.push(newDept)
-    }
-  }
-  
-  dialogVisible.value = false
+// 打开编辑
+const handleEdit = (row: Department) => {
+  // 浅拷贝当前行数据
+  formData.value = { ...row }
+  // 转换 switch 状态
+  switchEnabled.value = isTrue(row.is_enabled)
+  switchAdmin.value = isTrue(row.is_administrative_division)
+  dialogVisible.value = true
 }
 
-// 辅助函数：在树里根据 ID 找部门 (递归查找)
-const findDepartment = (list: Department[], targetId: string): Department | null => {
-  for (const item of list) {
-    if (item.id === targetId) return item
-    if (item.children) {
-      const found = findDepartment(item.children, targetId)
-      if (found) return found
+// 提交保存
+const handleSubmit = async () => {
+  try {
+    // 【重要】提交前将 boolean 转回数据库需要的 'true'/'false' 字符串
+    formData.value.is_enabled = switchEnabled.value ? 'true' : 'false'
+    formData.value.is_administrative_division = switchAdmin.value ? 'true' : 'false'
+    
+    // 如果不是行政区划，清空编码
+    if (!switchAdmin.value) {
+      formData.value.administrative_division_code = ''
     }
+
+    if (formData.value.department_id) {
+       await updateDepartment(formData.value)
+       ElMessage.success('更新成功')
+    } else {
+       await addDepartment(formData.value)
+       ElMessage.success('新增成功')
+    }
+    dialogVisible.value = false
+    fetchTree()
+  } catch(e) {
+    // 错误在 request.ts 已统一处理
   }
-  return null
 }
 
-
-
-// 新增按钮的点击事件 (预留)
-const handleCreate = () => {
-  console.log('点击了新增按钮')
-  // 将来这里会弹出一个对话框
+const handleDelete = (row: Department) => {
+  ElMessageBox.confirm(`确定要删除“${row.department_name}”吗？这将可能级联删除其子部门。`, '警告', { type: 'warning' }).then(async () => {
+    if (row.department_id) {
+      await deleteDepartment(row.department_id)
+      ElMessage.success('删除成功')
+      fetchTree()
+    }
+  })
 }
 </script>
 
 <style scoped>
-/* 保持组件样式独立 */
 .el-form-item {
-  margin-bottom: 20px; /* 搜索行和下面内容的间距 */
+  margin-bottom: 20px;
 }
 .el-divider {
   margin: 15px 0;
+}
+.tip-text {
+  margin-left: 10px;
+  font-size: 12px;
+  color: #999;
 }
 </style>
