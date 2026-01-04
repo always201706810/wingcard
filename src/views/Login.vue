@@ -34,7 +34,10 @@
               size="large"
               class="verify-code-input"
             />
-            <div class="verify-code-img" @click="refreshCode">m0DG</div>
+            <div class="verify-code-img" @click="refreshCode">
+              <img v-if="captchaUrl" :src="captchaUrl" alt="验证码" title="点击刷新" />
+              <span v-else>加载中...</span>
+            </div>
           </div>
         </el-form-item>
         
@@ -59,38 +62,61 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { User, Lock, Picture } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-// 引入 API
-import { login } from '../types/api'
+import { login, getCaptcha } from '../types/api'
+
+
+import { encryptPassword } from '../utils/encrypt'
 
 const router = useRouter()
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 
+// 验证码图片 Base64
+const captchaUrl = ref('')
+
 // 表单数据
 const loginForm = reactive({
   username: '',
   password: '',
-  verifyCode: '',
+  verifyCode: '', // 用户输入的验证码
+  captchaId: '',  // 后端返回的验证码ID (隐藏字段)
   rememberMe: false
 })
 
 // 表单验证规则
 const rules = reactive<FormRules>({
   username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  verifyCode: [{ required: true, message: '请输入验证码', trigger: 'blur' }]
 })
 
-// 刷新验证码 (预留)
-const refreshCode = () => {
-  ElMessage.info('后端验证码接口开发中')
+// 1. 获取/刷新验证码
+const refreshCode = async () => {
+  try {
+    const res: any = await getCaptcha()
+    
+    // 【核心修改】拦截器已经剥壳，res 直接就是 data 对象
+    if (res && res.captcha_image) {
+      captchaUrl.value = res.captcha_image
+      loginForm.captchaId = res.captcha_id
+    }
+  } catch (error) {
+    console.error('验证码获取失败', error)
+    // ElMessage.error('验证码获取失败') // request.ts 通常已处理错误提示
+  }
 }
 
-// 登录处理
+// 页面加载时，先获取一次验证码
+onMounted(() => {
+  refreshCode()
+})
+
+// 2. 登录处理
 const handleLogin = async () => {
   if (!loginFormRef.value) return
   
@@ -98,27 +124,32 @@ const handleLogin = async () => {
     if (valid) {
       loading.value = true
       try {
-        // 1. 调用登录接口 (注意字段映射：前端 username -> 后端 user_account)
+        // 🔥【关键修改】对密码进行加密
+        // 后端解密逻辑：Base64解码 -> 提取前16位IV -> 解密剩余部分
+        const encryptedPwd = encryptPassword(loginForm.password)
+        
+        // 调试：可以在控制台看看加密后的样子，应该是一串很长的乱码
+        console.log('加密后的密码:', encryptedPwd)
+
         const res: any = await login({
           user_account: loginForm.username,
-          user_password: loginForm.password
+          user_password: encryptedPwd, // 传加密后的密码
+          captcha_id: loginForm.captchaId,
+          captcha_code: loginForm.verifyCode, 
+          remember_me: loginForm.rememberMe   
         })
 
-        // 2. 登录成功处理
-        // 假设 res 结构是 { token: '...', user_info: { user_name: '...', ... } }
-        if (res.token) {
-          localStorage.setItem('token', res.token)
-          
-          // 存储用户信息，供 layout 显示名字用
+        if (res && res.jwt_token) {
+          localStorage.setItem('token', res.jwt_token)
           if (res.user_info) {
             localStorage.setItem('userInfo', JSON.stringify(res.user_info))
           }
-
           ElMessage.success('登录成功')
-          router.push('/system/info') // 跳转到名片管理页
+          router.push('/system/info')
         }
       } catch (error) {
-        // request.ts 会处理错误弹窗
+        refreshCode()
+        loginForm.verifyCode = ''
       } finally {
         loading.value = false
       }
@@ -133,7 +164,7 @@ const handleLogin = async () => {
   width: 100vw;
   height: 100vh;
   background-color: #f0f2f5;
-  background-image: url('https://gw.alipayobjects.com/zos/rmsportal/TVYTbAXWheQpRcWDaDMu.svg'); /* 加个简单的背景纹理 */
+  background-image: url('https://gw.alipayobjects.com/zos/rmsportal/TVYTbAXWheQpRcWDaDMu.svg');
   background-repeat: no-repeat;
   background-position: center 110px;
   background-size: 100%;
@@ -186,10 +217,12 @@ const handleLogin = async () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 18px;
-  color: #409eff;
-  font-weight: bold;
   cursor: pointer;
-  user-select: none;
+  overflow: hidden;
+}
+.verify-code-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 </style>

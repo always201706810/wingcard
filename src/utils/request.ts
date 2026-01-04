@@ -5,9 +5,9 @@ import { ElMessage } from 'element-plus'
 // 1. 创建 axios 实例
 const service = axios.create({
   // 从 对接.docx 看来，你需要填入后端提供的 IP
-  // baseURL: 'http://192.168.x.x:8080/api', // TODO: 请替换为实际后端地址
+  baseURL: 'http://localhost:8888/api', // TODO: 请替换为实际后端地址
   
-  baseURL: 'http://localhost:3000/api',
+  // baseURL: 'http://localhost:3000/api',
   timeout: 5000
 })
 
@@ -27,6 +27,11 @@ service.interceptors.request.use(
 // 3. 响应拦截器 (统一处理 code)
 service.interceptors.response.use(
   (response) => {
+    // 🔥【核心修改】新增这几行
+    // 如果响应是二进制流 (blob)，或者 headers 里包含 excel 类型，直接返回
+    if (response.config.responseType === 'blob' || response.headers['content-type']?.includes('application/vnd.openxmlformats')) {
+      return response.data
+    }
     const res = response.data
     // 对接文档约定: code 200 表示成功
     if (res.code !== 200) {

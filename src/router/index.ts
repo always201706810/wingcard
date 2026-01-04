@@ -8,6 +8,7 @@
     import Company from '../views/card/Company.vue'
     import Dashboard from '../views/card/Dashboard.vue'
     import Info from '../views/card/Info.vue'
+    import Visit from '../views/log/Visit.vue'
     // 2. 定义路由规则
     const routes = [
       {
@@ -40,10 +41,15 @@
             name: 'Dashboard',
             component: Dashboard
           },
-                    {
+          {
             path: '/system/info',
             name: 'Info',
             component: Info
+          },
+          {
+            path: 'visit-log',
+            name: 'VisitLog',
+            component: Visit
           }
           // TODO: 在这里为其他页面 (名片信息、公司简介等) 添加路由
         ]

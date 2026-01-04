@@ -42,7 +42,10 @@
             <el-menu-item index="/system/company">公司简介</el-menu-item>
             <el-menu-item index="/system/dashboard">数据看板</el-menu-item>
           </el-sub-menu>
-
+        <el-menu-item index="/system/visit-log">
+          <el-icon><Tickets /></el-icon>
+          <span>访客记录</span>
+        </el-menu-item>
           <el-sub-menu index="2">
             <template #title>
               <el-icon><Setting /></el-icon>

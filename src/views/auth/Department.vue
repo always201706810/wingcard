@@ -3,10 +3,18 @@
 
     <el-form :inline="true" :model="searchForm">
       <el-form-item label="部门名称:">
-        <el-input v-model="searchForm.name" placeholder="请输入部门名称"></el-input>
+        <el-autocomplete
+          v-model="searchForm.name"
+          :fetch-suggestions="querySearchAsync"
+          placeholder="请输入部门名称"
+          clearable
+          @select="handleSelect"
+          @clear="loadData"
+          style="width: 250px"
+        />
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" :icon="Search" @click="fetchTree">搜索</el-button>
+        <el-button type="primary" :icon="Search" @click="loadData">搜索</el-button>
         <el-button :icon="Refresh" @click="handleReset">重置</el-button>
       </el-form-item>
     </el-form>
@@ -22,6 +30,7 @@
       border 
       default-expand-all
       v-loading="loading"
+      :tree-props="{ children: 'children_department', hasChildren: 'hasChildren' }"
     >
       <el-table-column prop="department_name" label="部门名称" min-width="200" />
       
@@ -124,8 +133,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getDepartmentTree, addDepartment, updateDepartment, deleteDepartment } from '../../types/api'
+import { getDepartmentTree, addDepartment, updateDepartment, deleteDepartment, associativeSearch, getSearchDepartments } from '../../types/api'
 import type { Department } from '../../types/api'
+
+
+
+
 
 // 1. 状态定义
 const searchForm = ref({ name: '' })
@@ -139,14 +152,16 @@ const switchEnabled = ref(true)
 const switchAdmin = ref(false)
 
 const formData = ref<Department>({
+  department_id: 0, // int 类型初始为 0
   department_name: '',
-  is_enabled: 'true',
+  parent_department_id: 0,
   is_administrative_division: 'false',
-  sort_order: 0,
-  contact_person: '',
-  contact_phone: '',
   administrative_division_code: '',
-  unified_social_credit_code: ''
+  is_enabled: 'true',
+  sort_order: 0, // 错别字匹配
+  unified_social_credit_code: '',
+  contact_person: '',
+  contact_phone: ''
 })
 
 // 计算弹窗标题
@@ -157,8 +172,13 @@ const dialogTitle = computed(() => {
 })
 
 // 3. 辅助函数：兼容处理 boolean 和 string ('true')
-const isTrue = (val: boolean | string | undefined) => {
-  return val === true || val === 'true'
+// const isTrue = (val: boolean | string | undefined) => {
+//   return val === true || val === 'true'
+// }
+// --- 2. 辅助函数 ---
+// 后端返回的是字符串 "true"/"false"，我们需要转成 boolean 给 Switch 用
+const isTrue = (val: string | boolean | undefined) => {
+  return val === 'true' || val === true
 }
 
 // 4. API 交互
@@ -167,7 +187,14 @@ const fetchTree = async () => {
   try {
     const res: any = await getDepartmentTree()
     // 假设后端返回的数据已经是树形结构
-    tableData.value = res || [] 
+    console.log('部门树原始数据:', res)
+// 2. 精准取值：后端的数据在 res.data 里
+    if (res && Array.isArray(res)) {
+      tableData.value = res
+    } 
+    else {
+      tableData.value = []
+    }
   } catch(e) {
     console.error(e)
   } finally {
@@ -175,27 +202,37 @@ const fetchTree = async () => {
   }
 }
 
-onMounted(() => {
-  fetchTree()
-})
+// onMounted(() => {
+//   fetchTree()
+// })
 
-const handleReset = () => {
-  searchForm.value.name = ''
-  fetchTree()
-}
+// const handleReset = () => {
+//   searchForm.value.name = ''
+//   fetchTree()
+// }
 
 // 5. 操作逻辑
 // 打开新增一级部门
 const openDialog = () => {
   formData.value = {
-    department_name: '',
-    is_enabled: 'true',
-    is_administrative_division: 'false',
-    sort_order: 0,
-    contact_person: '',
-    contact_phone: '',
-    administrative_division_code: '',
-    unified_social_credit_code: ''
+    // department_name: '',
+    // is_enabled: 'true',
+    // is_administrative_division: 'false',
+    // sort_order: 0,
+    // contact_person: '',
+    // contact_phone: '',
+    // administrative_division_code: '',
+    // unified_social_credit_code: ''
+      department_id: 0, // int 类型初始为 0
+      department_name: '',
+      parent_department_id: 0,
+      is_administrative_division: 'false',
+      administrative_division_code: '',
+      is_enabled: 'true',
+      sort_order: 0, // 错别字匹配
+      unified_social_credit_code: '',
+      contact_person: '',
+      contact_phone: ''
   }
   switchEnabled.value = true
   switchAdmin.value = false
@@ -205,15 +242,16 @@ const openDialog = () => {
 // 打开新增下级
 const handleAdd = (row: Department) => {
   formData.value = {
+department_id: 0,
     department_name: '',
-    parent_department_id: row.department_id, // 关键：自动带入父ID
-    is_enabled: 'true',
+    parent_department_id: row.department_id!, // 🔥关键：父ID = 当前行的ID
     is_administrative_division: 'false',
-    sort_order: 0,
-    contact_person: '',
-    contact_phone: '',
     administrative_division_code: '',
-    unified_social_credit_code: ''
+    is_enabled: 'true',
+    sort_order: 0,
+    unified_social_credit_code: '',
+    contact_person: '',
+    contact_phone: ''
   }
   switchEnabled.value = true
   switchAdmin.value = false
@@ -223,7 +261,8 @@ const handleAdd = (row: Department) => {
 // 打开编辑
 const handleEdit = (row: Department) => {
   // 浅拷贝当前行数据
-  formData.value = { ...row }
+  // formData.value = { ...row }
+  formData.value = JSON.parse(JSON.stringify(row))
   // 转换 switch 状态
   switchEnabled.value = isTrue(row.is_enabled)
   switchAdmin.value = isTrue(row.is_administrative_division)
@@ -241,12 +280,15 @@ const handleSubmit = async () => {
     if (!switchAdmin.value) {
       formData.value.administrative_division_code = ''
     }
+// 2. 构造请求数据：必须剔除 children_department 字段！
+    // 这里的 ...reqData 就是剔除后的干净数据
+    const { children_department, ...reqData } = formData.value
 
     if (formData.value.department_id) {
-       await updateDepartment(formData.value)
+       await updateDepartment(reqData)
        ElMessage.success('更新成功')
     } else {
-       await addDepartment(formData.value)
+       await addDepartment(reqData)
        ElMessage.success('新增成功')
     }
     dialogVisible.value = false
@@ -264,6 +306,67 @@ const handleDelete = (row: Department) => {
       fetchTree()
     }
   })
+}
+
+// 【联想搜索】输入文字时触发
+const querySearchAsync = async (queryString: string, cb: (arg: any) => void) => {
+  if (!queryString) {
+    cb([])
+    return
+  }
+  try {
+    const res: any = await associativeSearch({ fuzzy_department_name: queryString })
+    console.log(queryString)
+    // 后端返回的是字符串数组 []string，ElementPlus 需要 [{ value: '...' }] 格式
+    // 假设拦截器返回的是 res (即 data 内容)
+    const list = Array.isArray(res) ? res : (res && res.data) || []
+    
+    const results = list.map((item: string) => ({ value: item }))
+    cb(results)
+  } catch (error) {
+    console.error(error)
+    cb([])
+  }
+}
+
+// 【选中联想项】
+const handleSelect = (item: any) => {
+  searchForm.value.name = item.value
+ // loadData() // 选中后立即触发搜索
+}
+
+// 【主查询逻辑】(替代原来的 fetchTree)
+const loadData = async () => {
+  loading.value = true
+  try {
+    let res: any
+    
+    if (searchForm.value.name) {
+      // 1. 如果有搜索词，调用“获取搜索部门”接口
+      res = await getSearchDepartments({ department_full_name: searchForm.value.name })
+    } else {
+      // 2. 如果没搜索词，调用“全量树”接口
+      res = await getDepartmentTree()
+    }
+
+    // 兼容处理数据结构
+    tableData.value = res.list || res.data || res || []
+  } catch (e) {
+    console.error('获取数据失败', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+// 页面加载时
+onMounted(() => {
+  loadData()
+})
+
+// 重置
+const handleReset = () => {
+  searchForm.value.name = ''
+  loadData()
 }
 </script>
 
